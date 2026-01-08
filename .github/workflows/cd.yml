@@ -1,0 +1,169 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.x'
+  AZURE_WEBAPP_NAME: budget-platform-api
+  AZURE_WEBAPP_PACKAGE_PATH: './publish'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="0.0.0-dev.${{ github.run_number }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/web/package-lock.json
+
+      - name: Restore Backend
+        run: dotnet restore src/BudgetPlatform.sln
+
+      - name: Build Backend
+        run: dotnet build src/BudgetPlatform.sln --configuration Release --no-restore
+
+      - name: Publish Backend
+        run: dotnet publish src/Budget.Api/Budget.Api.csproj --configuration Release --output ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/api --no-build
+
+      - name: Install Frontend Dependencies
+        working-directory: src/web
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: src/web
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: /api
+
+      - name: Copy Frontend to API wwwroot
+        run: |
+          mkdir -p ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/api/wwwroot
+          cp -r src/web/dist/* ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/api/wwwroot/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-package
+          path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+          path: ./publish
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}-staging
+          slot-name: production
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_STAGING }}
+          package: ./publish/api
+
+  deploy-production:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+          path: ./publish
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: production
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PROD }}
+          package: ./publish/api
+
+  package-teams:
+    name: Package Teams App
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package Teams Manifest
+        working-directory: teams
+        run: |
+          # Create dist directory
+          mkdir -p dist
+          
+          # Process manifest
+          sed -e "s/{{APP_ID}}/${{ secrets.TEAMS_APP_ID }}/g" \
+              -e "s/{{AAD_APP_CLIENT_ID}}/${{ secrets.AAD_APP_CLIENT_ID }}/g" \
+              -e "s/{{PUBLIC_HOSTNAME}}/${{ secrets.PUBLIC_HOSTNAME }}/g" \
+              manifest.json > dist/manifest.json
+          
+          # Copy icons (if exist)
+          [ -f color.png ] && cp color.png dist/ || echo "color.png not found"
+          [ -f outline.png ] && cp outline.png dist/ || echo "outline.png not found"
+          
+          # Create ZIP
+          cd dist && zip -r ../budget-platform-teams.zip .
+
+      - name: Upload Teams Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: teams-package
+          path: teams/budget-platform-teams.zip
+

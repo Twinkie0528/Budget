@@ -1,0 +1,79 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "{{APP_ID}}",
+  "packageName": "com.company.budgetplatform",
+  "developer": {
+    "name": "Your Company",
+    "websiteUrl": "https://{{PUBLIC_HOSTNAME}}",
+    "privacyUrl": "https://{{PUBLIC_HOSTNAME}}/privacy",
+    "termsOfUseUrl": "https://{{PUBLIC_HOSTNAME}}/terms"
+  },
+  "name": {
+    "short": "Budget Platform",
+    "full": "Budget Platform - Enterprise Budget Management"
+  },
+  "description": {
+    "short": "Import and manage budget requests",
+    "full": "Enterprise Budget Platform enables you to upload Excel budget files, review parsed data, manage budget requests, and export reports. Integrated with Microsoft Teams for seamless collaboration."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#0078D4",
+  "staticTabs": [
+    {
+      "entityId": "home",
+      "name": "Home",
+      "contentUrl": "https://{{PUBLIC_HOSTNAME}}/teams?inTeams=true",
+      "websiteUrl": "https://{{PUBLIC_HOSTNAME}}/teams",
+      "scopes": ["personal"]
+    },
+    {
+      "entityId": "imports",
+      "name": "Import",
+      "contentUrl": "https://{{PUBLIC_HOSTNAME}}/imports?inTeams=true",
+      "websiteUrl": "https://{{PUBLIC_HOSTNAME}}/imports",
+      "scopes": ["personal"]
+    },
+    {
+      "entityId": "requests",
+      "name": "Requests",
+      "contentUrl": "https://{{PUBLIC_HOSTNAME}}/requests?inTeams=true",
+      "websiteUrl": "https://{{PUBLIC_HOSTNAME}}/requests",
+      "scopes": ["personal"]
+    }
+  ],
+  "configurableTabs": [
+    {
+      "configurationUrl": "https://{{PUBLIC_HOSTNAME}}/teams/config?inTeams=true",
+      "canUpdateConfiguration": true,
+      "scopes": ["team", "groupchat"]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "{{PUBLIC_HOSTNAME}}",
+    "*.{{PUBLIC_HOSTNAME}}"
+  ],
+  "webApplicationInfo": {
+    "id": "{{AAD_APP_CLIENT_ID}}",
+    "resource": "api://{{PUBLIC_HOSTNAME}}/{{AAD_APP_CLIENT_ID}}"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "User.Read",
+          "type": "Delegated"
+        }
+      ]
+    }
+  }
+}
+

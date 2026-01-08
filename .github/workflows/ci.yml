@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-backend:
+    name: Build & Test Backend
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: budget_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore src/BudgetPlatform.sln
+
+      - name: Build
+        run: dotnet build src/BudgetPlatform.sln --configuration Release --no-restore
+
+      - name: Run Unit Tests
+        run: dotnet test tests/Budget.Tests.Unit --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults/Unit
+
+      - name: Run Integration Tests
+        run: dotnet test tests/Budget.Tests.Integration --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults/Integration
+        env:
+          ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Database=budget_test;Username=test_user;Password=test_pass"
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-backend
+          path: TestResults/
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: src/web
+        run: npm ci
+
+      - name: Lint
+        working-directory: src/web
+        run: npm run lint
+
+      - name: Build
+        working-directory: src/web
+        run: npm run build
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: src/web/dist/
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore src/BudgetPlatform.sln
+
+      - name: Format Check
+        run: dotnet format src/BudgetPlatform.sln --verify-no-changes --verbosity diagnostic
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore src/BudgetPlatform.sln
+
+      - name: Run Security Scan
+        run: |
+          dotnet tool install --global security-scan || true
+          dotnet list src/BudgetPlatform.sln package --vulnerable --include-transitive
+        continue-on-error: true
+
