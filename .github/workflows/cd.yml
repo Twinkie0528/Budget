@@ -83,7 +83,7 @@ jobs:
           cp -r src/web/dist/* ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/api/wwwroot/
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: app-package
           path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
@@ -162,7 +162,7 @@ jobs:
           cd dist && zip -r ../budget-platform-teams.zip .
 
       - name: Upload Teams Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: teams-package
           path: teams/budget-platform-teams.zip
